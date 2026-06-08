@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Rootkit Song Sketch - D Minor</title>
+<style>
+body{font-family:Arial,sans-serif;background:#111;color:#eee;padding:20px}
+button{padding:10px 20px;font-size:18px}
+pre{white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h2>Rootkit – Rough Melody Sketch (D Minor)</h2>
+<p>This is a simple Web Audio melody interpretation of the first 4 verses, pre-chorus, and chorus.</p>
+<button onclick="playSong()">Play Sketch</button>
+<pre>
+Verse feel: low, reflective, conversational
+Pre-chorus: rising tension
+Chorus: broader, more anthemic
+</pre>
+
+<script>
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+
+const N = {
+D3:146.83,F3:174.61,A3:220.00,C4:261.63,D4:293.66,E4:329.63,F4:349.23,
+G4:392.00,A4:440.00,C5:523.25,D5:587.33
+};
+
+function playTone(ctx,freq,start,dur){
+  const osc=ctx.createOscillator();
+  const gain=ctx.createGain();
+  osc.type='sawtooth';
+  osc.frequency.value=freq;
+  gain.gain.setValueAtTime(0.0001,start);
+  gain.gain.exponentialRampToValueAtTime(0.08,start+0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001,start+dur);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(start);
+  osc.stop(start+dur+0.05);
+}
+
+function phrase(ctx,start,notes,len=0.42){
+  let t=start;
+  for(const n of notes){
+    playTone(ctx,N[n],t,len);
+    t+=len;
+  }
+  return t;
+}
+
+async function playSong(){
+  const ctx=new AudioContext();
+  let t=ctx.currentTime+0.2;
+
+  // Verse motif
+  const verse = ["D3","F3","A3","F3","D3","F3","G4","F4"];
+  for(let i=0;i<4;i++){
+    t=phrase(ctx,t,verse,0.38)+0.4;
+  }
+
+  // Pre chorus
+  const pre = ["A3","C4","D4","F4","G4","A4","G4","F4","D4"];
+  t=phrase(ctx,t,pre,0.35)+0.8;
+
+  // Chorus
+  const chorus = [
+    "D4","F4","A4","A4",
+    "G4","F4","D4",
+    "F4","A4","C5","A4",
+    "G4","F4","D4",
+    "F4","G4","A4","C5",
+    "D5","C5","A4","F4","D4"
+  ];
+  phrase(ctx,t,chorus,0.42);
+}
+</script>
+</body>
+</html>

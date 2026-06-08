@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Rootkit Demo Composer</title>
+<style>
+body{background:#0f1117;color:#eee;font-family:Arial;padding:20px;max-width:1000px;margin:auto}
+button{padding:12px 24px;font-size:18px;margin:4px}
+h1{margin-top:0}
+.section{border:1px solid #333;padding:12px;margin:12px 0}
+</style>
+</head>
+<body>
+<h1>ROOTKIT – D Minor Concept Demo</h1>
+
+<p>A more developed sketch inspired by The Scientist / How To Save A Life style piano writing.</p>
+
+<button onclick="play()">▶ Play Arrangement</button>
+
+<div class="section">
+<b>Verse:</b> Dm – Bb – F – C<br>
+<b>Pre-Chorus:</b> Bb – C – Dm – Dm<br>
+<b>Chorus:</b> Dm – Bb – F – C (anthemic lift)<br>
+<b>Tempo:</b> 76 BPM
+</div>
+
+<script>
+const ctx = new (window.AudioContext||window.webkitAudioContext)();
+
+const N={
+D3:146.83,F3:174.61,A3:220,
+Bb3:233.08,C4:261.63,D4:293.66,F4:349.23,
+G4:392,A4:440,Bb4:466.16,C5:523.25,D5:587.33
+};
+
+function tone(freq,start,dur,type='triangle',vol=.04){
+ const o=ctx.createOscillator();
+ const g=ctx.createGain();
+ o.type=type;
+ o.frequency.value=freq;
+ g.gain.setValueAtTime(.0001,start);
+ g.gain.exponentialRampToValueAtTime(vol,start+.02);
+ g.gain.exponentialRampToValueAtTime(.0001,start+dur);
+ o.connect(g).connect(ctx.destination);
+ o.start(start);
+ o.stop(start+dur+.05);
+}
+
+function chord(notes,start,dur){
+ notes.forEach(n=>tone(N[n],start,dur,'triangle',0.03));
+}
+
+function melody(notes,start,step=.55){
+ let t=start;
+ notes.forEach(n=>{
+  tone(N[n],t,step*.9,'sine',0.06);
+  t+=step;
+ });
+ return t;
+}
+
+function play(){
+ let t=ctx.currentTime+.2;
+
+ // Verse progression repeated
+ const verseChords=[
+ ["D3","F3","A3"],
+ ["Bb3","D4","F4"],
+ ["F3","A3","C4"],
+ ["C4","F3","A3"]
+ ];
+
+ for(let r=0;r<4;r++){
+   verseChords.forEach(ch=>{
+      chord(ch,t,2.2);
+      t+=2.2;
+   });
+ }
+
+ // Verse melody contour
+ t=ctx.currentTime+1;
+ melody(["D4","F4","A4","F4","D4","F4","G4","F4"],t);
+
+ // Pre chorus
+ let p=ctx.currentTime+36;
+ [["Bb3","D4","F4"],["C4","G4","Bb4"],["D3","F3","A3"],["D3","F3","A3"]]
+ .forEach(ch=>{chord(ch,p,2.5);p+=2.5;});
+
+ melody(["F4","G4","A4","Bb4","A4","G4","F4","D4"],ctx.currentTime+36,.5);
+
+ // Chorus
+ let c=ctx.currentTime+47;
+ const chorus=[
+ ["D3","F3","A3"],
+ ["Bb3","D4","F4"],
+ ["F3","A3","C4"],
+ ["C4","G4","Bb4"]
+ ];
+ for(let i=0;i<2;i++){
+  chorus.forEach(ch=>{chord(ch,c,2.4);c+=2.4;});
+ }
+
+ melody(
+ ["D4","F4","A4","A4","G4","F4","D4",
+  "F4","A4","C5","A4","G4","F4",
+  "A4","Bb4","C5","D5","C5","A4","F4"],
+ ctx.currentTime+47,.45);
+}
+</script>
+</body>
+</html>
