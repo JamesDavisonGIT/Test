@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ROOTKIT — D minor full demo</title>
+<style>
+:root {
+  --bg:#0b0d12; --panel:#151925; --panel2:#10131b; --line:#293042;
+  --text:#eef2ff; --muted:#a8b0c3; --accent:#d5b46a; --blue:#7fa7ff; --red:#ff7f9b;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;background:radial-gradient(circle at top,#1b2131,#090a0e 50%,#050608);color:var(--text);}
+header{position:sticky;top:0;z-index:10;background:rgba(10,12,18,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:16px 20px}
+h1{margin:0 0 6px;font-size:28px;letter-spacing:.04em}
+.small{color:var(--muted);font-size:14px;line-height:1.5}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+button{background:#20283a;color:var(--text);border:1px solid #3a4662;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
+button:hover{background:#2a3550}
+input[type=range]{width:170px}
+main{max-width:1180px;margin:0 auto;padding:20px}
+.grid{display:grid;grid-template-columns:1fr;gap:18px}
+.card{background:linear-gradient(180deg,rgba(28,34,49,.96),rgba(16,19,28,.96));border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+h2{margin:0 0 12px;color:var(--accent)}
+h3{margin:18px 0 8px;color:#fff;border-top:1px solid var(--line);padding-top:14px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{border-bottom:1px solid #263046;padding:9px;text-align:left;vertical-align:top}
+th{color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.chord{font-weight:900;color:var(--accent);font-size:18px;white-space:nowrap}
+.lyric{font-size:17px;font-weight:650}
+.guide{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#c4d1ff;font-size:13px;line-height:1.5}
+.section-title{background:#0d1018;color:#fff;font-weight:900;padding:9px 12px;border-radius:10px;margin:22px 0 8px;letter-spacing:.08em}
+.note{display:inline-block;border:1px solid #34405b;background:#111724;border-radius:999px;padding:3px 7px;margin:2px;color:#dfe6ff}
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.legend div{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px}
+.status{color:#b5ffd2;font-weight:700}
+.arr{line-height:1.6}
+footer{color:var(--muted);padding:30px 20px;text-align:center}
+.karaoke{margin-top:14px;border:1px solid #3a4662;background:linear-gradient(180deg,#111827,#080a10);border-radius:16px;padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.k-meta{font-size:13px;color:var(--accent);font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.k-line{font-size:22px;font-weight:800;margin-top:6px;line-height:1.25;color:#fff}
+.k-syllable{font-size:42px;font-weight:950;line-height:1.1;margin-top:8px;color:#bcd0ff;text-shadow:0 0 18px rgba(127,167,255,.45)}
+.k-debug{font-size:12px;color:var(--muted);margin-top:4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.word-live{background:rgba(213,180,106,.22);border-bottom:2px solid var(--accent);border-radius:5px;padding:1px 3px}
+@media (min-width:900px){.grid{grid-template-columns:1.2fr .8fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>ROOTKIT — D Minor Full Demo</h1>
+  <div class="small">Full vocal-guide melody, chord chart, structure, tempo map, and a richer Web Audio arrangement with piano, bass, strings, drums, and a vocal-guide synth. This version uses adaptive syllable timing so long lyric lines do not swallow notes. Designed for iOS/Safari: press “Test sound / unlock audio” first, then press Play. Make sure silent mode is off and volume is up.</div>
+  <div class="controls">
+    <button id="unlockBtn">🔊 Test sound / unlock audio</button>
+    <button id="playBtn">▶ Play full arrangement</button>
+    <button id="vocalBtn">▶ Vocal guide only</button>
+    <button id="shortBtn">▶ Play first 60 seconds</button>
+    <button id="stopBtn">■ Stop</button>
+    <label class="small">Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.75"></label>
+    <label class="small">Vocal guide <input id="melVol" type="range" min="0.3" max="2.5" step="0.05" value="1.45"></label>
+    <span id="status" class="status"></span>
+  </div>
+  <div id="karaokePanel" class="karaoke">
+    <div class="k-meta"><span id="kSection">Ready</span> · <span id="kChord">—</span> · <span id="kNote">—</span></div>
+    <div id="kLine" class="k-line">Press Test sound, then Play.</div>
+    <div id="kSyllable" class="k-syllable">—</div>
+    <div id="kDebug" class="k-debug">Syllable parser ready.</div>
+  </div>
+</header>
+
+<main>
+  <div class="grid">
+    <section class="card">
+      <h2>Chord chart + vocal melody guide</h2>
+      <div class="small">Format: <b>syllable:note</b>. Hyphens indicate split syllables. This is a composed guide melody, not a final recording.</div>
+      <div class="section-title">VERSE 1A</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">The beep welcomed me again,</td><td class="guide">The:D4 beep:F4 wel:A4-comed:F4 me:D4 a:F4-gain:G4</td></tr><tr><td class="chord">Bb</td><td class="lyric">The beeping wanted more.</td><td class="guide">The:D4 beep:F4-ing:G4 want:F4-ed:D4 more:C4</td></tr><tr><td class="chord">F</td><td class="lyric">I pressed the F key just in time</td><td class="guide">I:C4 pressed:D4 the:F4 F:A4 key:G4 just:F4 in:D4 time:C4</td></tr><tr><td class="chord">C</td><td class="lyric">To read a message I’d seen before.</td><td class="guide">To:C4 read:D4 a:F4 mes:G4-sage:F4 I’d:D4 seen:C4 be:A3-fore:D4</td></tr></tbody></table><div class="section-title">VERSE 1B</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">Something hard was failing,</td><td class="guide">Some:D4-thing:F4 hard:A4 was:F4 fail:D4-ing:F4</td></tr><tr><td class="chord">Bb</td><td class="lyric">Something I knew I couldn’t afford.</td><td class="guide">Some:D4-thing:F4 I:G4 knew:F4 I:D4 could:C4-n’t:D4 a:F4-fford:G4</td></tr><tr><td class="chord">F</td><td class="lyric">I pressed Escape, we used duct tape,</td><td class="guide">I:C4 pressed:D4 Es:F4-cape:A4 we:G4 used:F4 duct:D4 tape:C4</td></tr><tr><td class="chord">C</td><td class="lyric">And simply clicked Ignore.</td><td class="guide">And:C4 sim:D4-ply:F4 clicked:G4 Ig:F4-nore:D4</td></tr></tbody></table><div class="section-title">VERSE 2A</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">I scanned through all my memory,</td><td class="guide">I:D4 scanned:F4 through:A4 all:F4 my:D4 mem:F4-o:G4-ry:F4</td></tr><tr><td class="chord">Bb</td><td class="lyric">I ran a full restore.</td><td class="guide">I:D4 ran:F4 a:G4 full:F4 re:D4-store:C4</td></tr><tr><td class="chord">F</td><td class="lyric">I activated Windows cracked, then</td><td class="guide">I:C4 ac:D4-ti:F4-va:A4-ted:G4 Win:F4-dows:D4 cracked:C4 then:A3</td></tr><tr><td class="chord">C</td><td class="lyric">Found glass bubbles to explore.</td><td class="guide">Found:C4 glass:D4 bub:F4-bles:G4 to:F4 ex:D4-plore:C4</td></tr></tbody></table><div class="section-title">VERSE 2B</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">The Wi-Fi disconnected,</td><td class="guide">The:D4 Wi:F4-Fi:A4 dis:F4-con:D4-nect:F4-ed:G4</td></tr><tr><td class="chord">Bb</td><td class="lyric">But more clouds than before.</td><td class="guide">But:D4 more:F4 clouds:G4 than:F4 be:D4-fore:C4</td></tr><tr><td class="chord">F</td><td class="lyric">I was wired now, never tired somehow,</td><td class="guide">I:C4 was:D4 wired:F4 now:A4 nev:G4-er:F4 tired:D4 some:C4-how:A3</td></tr><tr><td class="chord">C</td><td class="lyric">Living wound up on the floor.</td><td class="guide">Liv:C4-ing:D4 wound:F4 up:G4 on:F4 the:D4 floor:C4</td></tr></tbody></table><div class="section-title">PRE-CHORUS 1</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Bb</td><td class="lyric">I thought I was protected from all the hidden threats.</td><td class="guide">I:F4 thought:G4 I:A4 was:Bb4 pro:A4-tect:G4-ed:F4 from:D4 all:F4 the:G4 hid:A4-den:G4 threats:F4</td></tr><tr><td class="chord">C</td><td class="lyric">A rootkit hidden deep inside and it never forgets.</td><td class="guide">A:G4 root:A4-kit:Bb4 hid:C5-den:Bb4 deep:A4 in:G4-side:F4 and:G4 it:A4 nev:G4-er:F4 for:E4-gets:D4</td></tr><tr><td class="chord">Dm</td><td class="lyric">It loads itself on startup, and survives through all resets.</td><td class="guide">It:D4 loads:F4 it:A4-self:C5 on:Bb4 start:A4-up:G4 and:F4 sur:G4-vives:A4 through:G4 all:F4 re:E4-sets:D4</td></tr><tr><td class="chord">A7</td><td class="lyric">It’s always wanting more from me, which is exactly what it gets.</td><td class="guide">It’s:E4 al:F4-ways:G4 want:A4-ing:C5 more:Bb4 from:A4 me:G4 which:F4 is:E4 ex:F4-act:G4-ly:F4 what:E4 it:D4 gets:C#4</td></tr></tbody></table><div class="section-title">CHORUS 1</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">Give it love.</td><td class="guide">Give:A4 it:F4 love:D4</td></tr><tr><td class="chord">Bb</td><td class="lyric">Give it power.</td><td class="guide">Give:Bb4 it:A4 pow:F4-er:D4</td></tr><tr><td class="chord">F</td><td class="lyric">Give it all you have to give.</td><td class="guide">Give:A4 it:C5 all:A4 you:G4 have:F4 to:D4 give:C4</td></tr><tr><td class="chord">C</td><td class="lyric">In a minute it’s an hour,</td><td class="guide">In:F4 a:G4 min:A4-ute:C5 it’s:A4 an:G4 hour:F4</td></tr><tr><td class="chord">Dm</td><td class="lyric">and then there’s no more time to live.</td><td class="guide">and:F4 then:A4 there’s:C5 no:D5 more:C5 time:A4 to:F4 live:D4</td></tr><tr><td class="chord">Bb</td><td class="lyric">Give it up.</td><td class="guide">Give:Bb4 it:A4 up:F4</td></tr><tr><td class="chord">F</td><td class="lyric">Give up again.</td><td class="guide">Give:A4 up:G4 a:F4-gain:D4</td></tr><tr><td class="chord">C</td><td class="lyric">Shift-control to its command.</td><td class="guide">Shift:F4 con:G4-trol:A4 to:C5 its:A4 com:G4-mand:F4</td></tr><tr><td class="chord">Dm</td><td class="lyric">For a minute it’s okay again,</td><td class="guide">For:F4 a:A4 min:C5-ute:D5 it’s:C5 o:A4-kay:G4 a:F4-gain:D4</td></tr><tr><td class="chord">A7</td><td class="lyric">and then it’s like a rubber band.</td><td class="guide">and:E4 then:F4 it’s:G4 like:A4 a:C5 rub:Bb4-ber:A4 band:G4</td></tr></tbody></table><div class="section-title">VERSE 3A</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">The beeping was critical now,</td><td class="guide">The:D4 beep:F4-ing:A4 was:F4 crit:D4-i:F4-cal:G4 now:F4</td></tr><tr><td class="chord">Bb</td><td class="lyric">the fault was in the core.</td><td class="guide">the:D4 fault:F4 was:G4 in:F4 the:D4 core:C4</td></tr><tr><td class="chord">F</td><td class="lyric">No matter how much I F’d,</td><td class="guide">No:C4 mat:D4-ter:F4 how:A4 much:G4 I:F4 F’d:D4</td></tr><tr><td class="chord">C</td><td class="lyric">The blue screen of death was sure.</td><td class="guide">The:C4 blue:D4 screen:F4 of:G4 death:F4 was:D4 sure:C4</td></tr></tbody></table><div class="section-title">VERSE 3B</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">This time I went open source,</td><td class="guide">This:D4 time:F4 I:A4 went:F4 o:D4-pen:F4 source:G4</td></tr><tr><td class="chord">Bb</td><td class="lyric">I learned how to use the sword.</td><td class="guide">I:D4 learned:F4 how:G4 to:F4 use:D4 the:C4 sword:D4</td></tr><tr><td class="chord">F</td><td class="lyric">I sat awake, saw my mistakes,</td><td class="guide">I:C4 sat:D4 a:F4-wake:A4 saw:G4 my:F4 mis:D4-takes:C4</td></tr><tr><td class="chord">C</td><td class="lyric">And escaped the mental ward.</td><td class="guide">And:C4 es:D4-caped:F4 the:G4 men:F4-tal:D4 ward:C4</td></tr></tbody></table><div class="section-title">VERSE 4A</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">I scanned through my memories,</td><td class="guide">I:D4 scanned:F4 through:A4 my:F4 mem:D4-o:F4-ries:G4</td></tr><tr><td class="chord">Bb</td><td class="lyric">Seeing different than before.</td><td class="guide">See:D4-ing:F4 diff:G4-er:F4-ent:D4 than:C4 be:D4-fore:F4</td></tr><tr><td class="chord">F</td><td class="lyric">I activated diagnostic state,</td><td class="guide">I:C4 ac:D4-ti:F4-va:A4-ted:G4 di:F4-ag:D4-nos:C4-tic:A3 state:C4</td></tr><tr><td class="chord">C</td><td class="lyric">Then found myself in the store.</td><td class="guide">Then:C4 found:D4 my:F4-self:G4 in:F4 the:D4 store:C4</td></tr></tbody></table><div class="section-title">VERSE 4B</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">The radio went live again,</td><td class="guide">The:D4 ra:F4-di:A4-o:F4 went:D4 live:F4 a:G4-gain:F4</td></tr><tr><td class="chord">Bb</td><td class="lyric">No clouds from shore to shore.</td><td class="guide">No:D4 clouds:F4 from:G4 shore:F4 to:D4 shore:C4</td></tr><tr><td class="chord">F</td><td class="lyric">No strings attached, no more attacks,</td><td class="guide">No:C4 strings:D4 at:F4-tached:A4 no:G4 more:F4 at:D4-tacks:C4</td></tr><tr><td class="chord">C</td><td class="lyric">No constant state of war.</td><td class="guide">No:C4 con:D4-stant:F4 state:G4 of:F4 war:D4</td></tr></tbody></table><div class="section-title">PRE-CHORUS 2</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Bb</td><td class="lyric">I thought I was protected from all the hidden threats.</td><td class="guide">I:F4 thought:G4 I:A4 was:Bb4 pro:A4-tect:G4-ed:F4 from:D4 all:F4 the:G4 hid:A4-den:G4 threats:F4</td></tr><tr><td class="chord">C</td><td class="lyric">A rootkit hidden deep inside and it never forgets.</td><td class="guide">A:G4 root:A4-kit:Bb4 hid:C5-den:Bb4 deep:A4 in:G4-side:F4 and:G4 it:A4 nev:G4-er:F4 for:E4-gets:D4</td></tr><tr><td class="chord">Dm</td><td class="lyric">It loads itself on startup, and survives through all resets.</td><td class="guide">It:D4 loads:F4 it:A4-self:C5 on:Bb4 start:A4-up:G4 and:F4 sur:G4-vives:A4 through:G4 all:F4 re:E4-sets:D4</td></tr><tr><td class="chord">A7</td><td class="lyric">It’s always wanting more from me, which is exactly what it gets.</td><td class="guide">It’s:E4 al:F4-ways:G4 want:A4-ing:C5 more:Bb4 from:A4 me:G4 which:F4 is:E4 ex:F4-act:G4-ly:F4 what:E4 it:D4 gets:C#4</td></tr></tbody></table><div class="section-title">CHORUS 2</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">Give it love.</td><td class="guide">Give:A4 it:F4 love:D4</td></tr><tr><td class="chord">Bb</td><td class="lyric">Give it power.</td><td class="guide">Give:Bb4 it:A4 pow:F4-er:D4</td></tr><tr><td class="chord">F</td><td class="lyric">Give it all you have to give.</td><td class="guide">Give:A4 it:C5 all:A4 you:G4 have:F4 to:D4 give:C4</td></tr><tr><td class="chord">C</td><td class="lyric">In a minute it’s an hour,</td><td class="guide">In:F4 a:G4 min:A4-ute:C5 it’s:A4 an:G4 hour:F4</td></tr><tr><td class="chord">Dm</td><td class="lyric">and then there’s no more time to live.</td><td class="guide">and:F4 then:A4 there’s:C5 no:D5 more:C5 time:A4 to:F4 live:D4</td></tr><tr><td class="chord">Bb</td><td class="lyric">Give it up.</td><td class="guide">Give:Bb4 it:A4 up:F4</td></tr><tr><td class="chord">F</td><td class="lyric">Give up again.</td><td class="guide">Give:A4 up:G4 a:F4-gain:D4</td></tr><tr><td class="chord">C</td><td class="lyric">Shift-control to its command.</td><td class="guide">Shift:F4 con:G4-trol:A4 to:C5 its:A4 com:G4-mand:F4</td></tr><tr><td class="chord">Dm</td><td class="lyric">For a minute it’s okay again,</td><td class="guide">For:F4 a:A4 min:C5-ute:D5 it’s:C5 o:A4-kay:G4 a:F4-gain:D4</td></tr><tr><td class="chord">A7</td><td class="lyric">and then it’s like a rubber band.</td><td class="guide">and:E4 then:F4 it’s:G4 like:A4 a:C5 rub:Bb4-ber:A4 band:G4</td></tr></tbody></table><div class="section-title">BRIDGE</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Gm</td><td class="lyric">The thing with self control, is that it requires self defence.</td><td class="guide">The:D4 thing:F4 with:G4 self:Bb4 con:A4-trol:G4 is:F4 that:D4 it:F4 re:G4-quires:A4 self:G4 de:F4-fence:D4</td></tr><tr><td class="chord">Bb</td><td class="lyric">To con the soul is terminal, it’s simply common sense.</td><td class="guide">To:D4 con:F4 the:G4 soul:Bb4 is:A4 ter:G4-min:F4-al:D4 it’s:F4 sim:G4-ply:A4 com:G4-mon:F4 sense:D4</td></tr><tr><td class="chord">F</td><td class="lyric">The console was always open, with no admin user rights.</td><td class="guide">The:C4 con:D4-sole:F4 was:A4 al:G4-ways:F4 o:D4-pen:C4 with:D4 no:F4 ad:G4-min:F4 us:D4-er:C4 rights:A3</td></tr><tr><td class="chord">C</td><td class="lyric">The terminal is locked down now, to protect my bits and bytes.</td><td class="guide">The:C4 ter:D4-min:F4-al:G4 is:A4 locked:G4 down:F4 now:D4 to:F4 pro:G4-tect:A4 my:G4 bits:F4 and:D4 bytes:C4</td></tr><tr><td class="chord">Gm</td><td class="lyric">I no longer have a BIOS, that’s shared like the sun.</td><td class="guide">I:D4 no:F4 long:G4-er:Bb4 have:A4 a:G4 BI:F4-OS:D4 that’s:F4 shared:G4 like:A4 the:G4 sun:F4</td></tr><tr><td class="chord">A7</td><td class="lyric">I am now a bare metal server, serving only one.</td><td class="guide">I:E4 am:F4 now:G4 a:A4 bare:C5 met:Bb4-al:A4 ser:G4-ver:F4 serv:E4-ing:F4 on:E4-ly:D4 one:C#4</td></tr></tbody></table><div class="section-title">VERSE 5</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">No virus can infect me, if I don’t unlock the door.</td><td class="guide">No:D4 vi:F4-rus:A4 can:F4 in:D4-fect:F4 me:G4 if:F4 I:D4 don’t:F4 un:G4-lock:F4 the:D4 door:C4</td></tr><tr><td class="chord">Bb</td><td class="lyric">No addiction can correct me, because right isn’t anymore.</td><td class="guide">No:D4 ad:F4-dic:G4-tion:Bb4 can:A4 cor:G4-rect:F4 me:D4 be:F4-cause:G4 right:A4 is:G4-n’t:F4 an:D4-y:C4-more:D4</td></tr><tr><td class="chord">F</td><td class="lyric">It’s actually less, to avoid that stress, and be the one I was before.</td><td class="guide">It’s:C4 ac:D4-tu:F4-al:A4-ly:G4 less:F4 to:D4 a:C4-void:D4 that:F4 stress:G4 and:F4 be:D4 the:C4 one:A3 I:C4 was:D4 be:F4-fore:G4</td></tr><tr><td class="chord">C</td><td class="lyric">The rootkit still whispers, in the shadows where it’s confined.</td><td class="guide">The:C4 root:D4-kit:F4 still:G4 whis:A4-pers:G4 in:F4 the:D4 sha:F4-dows:G4 where:F4 it’s:D4 con:C4-fined:A3</td></tr><tr><td class="chord">A7</td><td class="lyric">The difference now is that I understand you can’t quarantine your mind.</td><td class="guide">The:E4 diff:F4-er:G4-ence:A4 now:C5 is:Bb4 that:A4 I:G4 un:F4-der:E4-stand:F4 you:G4 can’t:A4 quar:G4-an:F4-tine:E4 your:D4 mind:C#4</td></tr></tbody></table><div class="section-title">FINAL CHORUS</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">So, give it love.</td><td class="guide">So:F4 give:A4 it:F4 love:D4</td></tr><tr><td class="chord">Bb</td><td class="lyric">Give it power.</td><td class="guide">Give:Bb4 it:A4 pow:F4-er:D4</td></tr><tr><td class="chord">F</td><td class="lyric">Give it all you have to give.</td><td class="guide">Give:A4 it:C5 all:A4 you:G4 have:F4 to:D4 give:C4</td></tr><tr><td class="chord">C</td><td class="lyric">In a minute it’s an hour,</td><td class="guide">In:F4 a:G4 min:A4-ute:C5 it’s:A4 an:G4 hour:F4</td></tr><tr><td class="chord">Dm</td><td class="lyric">and then there’s no more time to live.</td><td class="guide">and:F4 then:A4 there’s:C5 no:D5 more:C5 time:A4 to:F4 live:D4</td></tr><tr><td class="chord">Bb</td><td class="lyric">Give it up.</td><td class="guide">Give:Bb4 it:A4 up:F4</td></tr><tr><td class="chord">F</td><td class="lyric">Give up again.</td><td class="guide">Give:A4 up:G4 a:F4-gain:D4</td></tr><tr><td class="chord">C</td><td class="lyric">Shift-control back to its demand.</td><td class="guide">Shift:F4 con:G4-trol:A4 back:C5 to:A4 its:G4 de:F4-mand:D4</td></tr><tr><td class="chord">Dm</td><td class="lyric">In a minute, it’s okay again,</td><td class="guide">In:F4 a:A4 min:C5-ute:D5 it’s:C5 o:A4-kay:G4 a:F4-gain:D4</td></tr><tr><td class="chord">A7</td><td class="lyric">and maybe then you’ll understand.</td><td class="guide">and:E4 may:F4-be:G4 then:A4 you’ll:C5 un:Bb4-der:A4-stand:G4</td></tr></tbody></table><div class="section-title">OUTRO</div><table><thead><tr><th>Chord</th><th>Lyric</th><th>Syllable melody</th></tr></thead><tbody><tr><td class="chord">Dm</td><td class="lyric">You are the only one with god control.</td><td class="guide">You:D4 are:F4 the:A4 on:C5-ly:A4 one:G4 with:F4 god:D4 con:F4-trol:G4</td></tr><tr><td class="chord">Bb</td><td class="lyric">You are the one who creates and plans.</td><td class="guide">You:D4 are:F4 the:G4 one:Bb4 who:A4 cre:G4-ates:F4 and:D4 plans:C4</td></tr><tr><td class="chord">F</td><td class="lyric">You are the only way it’s given up.</td><td class="guide">You:C4 are:D4 the:F4 on:A4-ly:G4 way:F4 it’s:D4 giv:C4-en:D4 up:F4</td></tr><tr><td class="chord">Dm</td><td class="lyric">You are always in command.</td><td class="guide">You:D4 are:F4 al:A4-ways:C5 in:A4 com:G4-mand:D4</td></tr></tbody></table>
+    </section>
+
+    <aside class="card">
+      <h2>Tempo map</h2>
+      <table>
+        <thead><tr><th>Section</th><th>Length</th><th>Arrangement note</th></tr></thead>
+        <tbody>
+        <tr><td><b>Intro</b></td><td>4 bars</td><td>Solo filtered piano motif in Dm. No drums. Establishes the warning-beep atmosphere.</td></tr><tr><td><b>Verse 1A–2B</b></td><td>32 bars</td><td>76 BPM. Sparse piano, low sub bass only on downbeats, no full drums yet. Vocal should feel conversational and tired.</td></tr><tr><td><b>Pre-chorus 1</b></td><td>8 bars</td><td>Tension lift. Add strings, held suspensions, and a tighter vocal climb toward C5.</td></tr><tr><td><b>Chorus 1</b></td><td>16 bars</td><td>Drums enter restrained. Chorus should feel ambiguous: half seductive, half warning.</td></tr><tr><td><b>Verse 3A–4B</b></td><td>32 bars</td><td>Same chords but with more pulse. The lyric moves from collapse into diagnosis and reconnection.</td></tr><tr><td><b>Pre-chorus 2 / Chorus 2</b></td><td>24 bars</td><td>Broader, clearer, less sinister. More open voicing and stronger kick/snare.</td></tr><tr><td><b>Bridge</b></td><td>12 bars</td><td>Shift to Gm/Bb/F/C then Gm/A7. Spoken-confessional feel, building into sovereignty.</td></tr><tr><td><b>Verse 5</b></td><td>10 bars</td><td>Drop drums partly out. Strings and bass hold the philosophical reveal.</td></tr><tr><td><b>Final chorus</b></td><td>16 bars</td><td>Full arrangement. Meaning flips from temptation to self-love/self-command.</td></tr><tr><td><b>Outro</b></td><td>8 bars</td><td>Strip back to piano + strings. End on Dm, not major: awakened, not magically cured.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 style="margin-top:24px">Arrangement notes</h2>
+      <div class="arr">
+        <p><b>Key:</b> D minor. The song should begin intimate and slightly ominous, then become clearer and more spiritual by the final chorus.</p>
+        <p><b>Main progression:</b> Dm – Bb – F – C. This gives the song a familiar emotional pull: dark root, warm lift, open release, unresolved return.</p>
+        <p><b>Pre-chorus:</b> Bb – C – Dm – A7. The A7 adds harmonic pressure back into D minor and makes the “rootkit” section feel like a system warning.</p>
+        <p><b>Bridge:</b> Gm – Bb – F – C – Gm – A7. This temporarily leaves the loop so the philosophy section feels like a new permissions layer.</p>
+        <p><b>Vocal range:</b> mostly C4–C5 with occasional D5 in choruses. If D5 feels strained, transpose the entire song down to C minor or B minor.</p>
+        <p><b>Production concept:</b> first chorus should feel ambiguous, almost like temptation. Final chorus should use the same melodic DNA but feel like reclaimed command.</p>
+      </div>
+
+      <h2 style="margin-top:24px">Chord palette</h2>
+      <div class="legend">
+        <div><b>Dm</b><br>D–F–A<br><span class="small">home / core / confession</span></div>
+        <div><b>Bb</b><br>Bb–D–F<br><span class="small">warmth / ache / self-love</span></div>
+        <div><b>F</b><br>F–A–C<br><span class="small">light / memory / outside world</span></div>
+        <div><b>C</b><br>C–E–G<br><span class="small">motion / radio / connection</span></div>
+        <div><b>A7</b><br>A–C#–E–G<br><span class="small">threat / pull / command line</span></div>
+        <div><b>Gm</b><br>G–Bb–D<br><span class="small">bridge / self-defence / lock down</span></div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<footer>Generated as a compositional sketch. Use the melody as a starting point, not a prison.</footer>
+
+<script>
+window.addEventListener('error', e => { const el=document.getElementById('status'); if(el) el.textContent='JS error: '+e.message; });
+const SONG = [{"section": "VERSE 1A", "chord": "Dm", "lyric": "The beep welcomed me again,", "guide": "The:D4 beep:F4 wel:A4-comed:F4 me:D4 a:F4-gain:G4"}, {"section": "VERSE 1A", "chord": "Bb", "lyric": "The beeping wanted more.", "guide": "The:D4 beep:F4-ing:G4 want:F4-ed:D4 more:C4"}, {"section": "VERSE 1A", "chord": "F", "lyric": "I pressed the F key just in time", "guide": "I:C4 pressed:D4 the:F4 F:A4 key:G4 just:F4 in:D4 time:C4"}, {"section": "VERSE 1A", "chord": "C", "lyric": "To read a message I\u2019d seen before.", "guide": "To:C4 read:D4 a:F4 mes:G4-sage:F4 I\u2019d:D4 seen:C4 be:A3-fore:D4"}, {"section": "VERSE 1B", "chord": "Dm", "lyric": "Something hard was failing,", "guide": "Some:D4-thing:F4 hard:A4 was:F4 fail:D4-ing:F4"}, {"section": "VERSE 1B", "chord": "Bb", "lyric": "Something I knew I couldn\u2019t afford.", "guide": "Some:D4-thing:F4 I:G4 knew:F4 I:D4 could:C4-n\u2019t:D4 a:F4-fford:G4"}, {"section": "VERSE 1B", "chord": "F", "lyric": "I pressed Escape, we used duct tape,", "guide": "I:C4 pressed:D4 Es:F4-cape:A4 we:G4 used:F4 duct:D4 tape:C4"}, {"section": "VERSE 1B", "chord": "C", "lyric": "And simply clicked Ignore.", "guide": "And:C4 sim:D4-ply:F4 clicked:G4 Ig:F4-nore:D4"}, {"section": "VERSE 2A", "chord": "Dm", "lyric": "I scanned through all my memory,", "guide": "I:D4 scanned:F4 through:A4 all:F4 my:D4 mem:F4-o:G4-ry:F4"}, {"section": "VERSE 2A", "chord": "Bb", "lyric": "I ran a full restore.", "guide": "I:D4 ran:F4 a:G4 full:F4 re:D4-store:C4"}, {"section": "VERSE 2A", "chord": "F", "lyric": "I activated Windows cracked, then", "guide": "I:C4 ac:D4-ti:F4-va:A4-ted:G4 Win:F4-dows:D4 cracked:C4 then:A3"}, {"section": "VERSE 2A", "chord": "C", "lyric": "Found glass bubbles to explore.", "guide": "Found:C4 glass:D4 bub:F4-bles:G4 to:F4 ex:D4-plore:C4"}, {"section": "VERSE 2B", "chord": "Dm", "lyric": "The Wi-Fi disconnected,", "guide": "The:D4 Wi:F4-Fi:A4 dis:F4-con:D4-nect:F4-ed:G4"}, {"section": "VERSE 2B", "chord": "Bb", "lyric": "But more clouds than before.", "guide": "But:D4 more:F4 clouds:G4 than:F4 be:D4-fore:C4"}, {"section": "VERSE 2B", "chord": "F", "lyric": "I was wired now, never tired somehow,", "guide": "I:C4 was:D4 wired:F4 now:A4 nev:G4-er:F4 tired:D4 some:C4-how:A3"}, {"section": "VERSE 2B", "chord": "C", "lyric": "Living wound up on the floor.", "guide": "Liv:C4-ing:D4 wound:F4 up:G4 on:F4 the:D4 floor:C4"}, {"section": "PRE-CHORUS 1", "chord": "Bb", "lyric": "I thought I was protected from all the hidden threats.", "guide": "I:F4 thought:G4 I:A4 was:Bb4 pro:A4-tect:G4-ed:F4 from:D4 all:F4 the:G4 hid:A4-den:G4 threats:F4"}, {"section": "PRE-CHORUS 1", "chord": "C", "lyric": "A rootkit hidden deep inside and it never forgets.", "guide": "A:G4 root:A4-kit:Bb4 hid:C5-den:Bb4 deep:A4 in:G4-side:F4 and:G4 it:A4 nev:G4-er:F4 for:E4-gets:D4"}, {"section": "PRE-CHORUS 1", "chord": "Dm", "lyric": "It loads itself on startup, and survives through all resets.", "guide": "It:D4 loads:F4 it:A4-self:C5 on:Bb4 start:A4-up:G4 and:F4 sur:G4-vives:A4 through:G4 all:F4 re:E4-sets:D4"}, {"section": "PRE-CHORUS 1", "chord": "A7", "lyric": "It\u2019s always wanting more from me, which is exactly what it gets.", "guide": "It\u2019s:E4 al:F4-ways:G4 want:A4-ing:C5 more:Bb4 from:A4 me:G4 which:F4 is:E4 ex:F4-act:G4-ly:F4 what:E4 it:D4 gets:C#4"}, {"section": "CHORUS 1", "chord": "Dm", "lyric": "Give it love.", "guide": "Give:A4 it:F4 love:D4"}, {"section": "CHORUS 1", "chord": "Bb", "lyric": "Give it power.", "guide": "Give:Bb4 it:A4 pow:F4-er:D4"}, {"section": "CHORUS 1", "chord": "F", "lyric": "Give it all you have to give.", "guide": "Give:A4 it:C5 all:A4 you:G4 have:F4 to:D4 give:C4"}, {"section": "CHORUS 1", "chord": "C", "lyric": "In a minute it\u2019s an hour,", "guide": "In:F4 a:G4 min:A4-ute:C5 it\u2019s:A4 an:G4 hour:F4"}, {"section": "CHORUS 1", "chord": "Dm", "lyric": "and then there\u2019s no more time to live.", "guide": "and:F4 then:A4 there\u2019s:C5 no:D5 more:C5 time:A4 to:F4 live:D4"}, {"section": "CHORUS 1", "chord": "Bb", "lyric": "Give it up.", "guide": "Give:Bb4 it:A4 up:F4"}, {"section": "CHORUS 1", "chord": "F", "lyric": "Give up again.", "guide": "Give:A4 up:G4 a:F4-gain:D4"}, {"section": "CHORUS 1", "chord": "C", "lyric": "Shift-control to its command.", "guide": "Shift:F4 con:G4-trol:A4 to:C5 its:A4 com:G4-mand:F4"}, {"section": "CHORUS 1", "chord": "Dm", "lyric": "For a minute it\u2019s okay again,", "guide": "For:F4 a:A4 min:C5-ute:D5 it\u2019s:C5 o:A4-kay:G4 a:F4-gain:D4"}, {"section": "CHORUS 1", "chord": "A7", "lyric": "and then it\u2019s like a rubber band.", "guide": "and:E4 then:F4 it\u2019s:G4 like:A4 a:C5 rub:Bb4-ber:A4 band:G4"}, {"section": "VERSE 3A", "chord": "Dm", "lyric": "The beeping was critical now,", "guide": "The:D4 beep:F4-ing:A4 was:F4 crit:D4-i:F4-cal:G4 now:F4"}, {"section": "VERSE 3A", "chord": "Bb", "lyric": "the fault was in the core.", "guide": "the:D4 fault:F4 was:G4 in:F4 the:D4 core:C4"}, {"section": "VERSE 3A", "chord": "F", "lyric": "No matter how much I F\u2019d,", "guide": "No:C4 mat:D4-ter:F4 how:A4 much:G4 I:F4 F\u2019d:D4"}, {"section": "VERSE 3A", "chord": "C", "lyric": "The blue screen of death was sure.", "guide": "The:C4 blue:D4 screen:F4 of:G4 death:F4 was:D4 sure:C4"}, {"section": "VERSE 3B", "chord": "Dm", "lyric": "This time I went open source,", "guide": "This:D4 time:F4 I:A4 went:F4 o:D4-pen:F4 source:G4"}, {"section": "VERSE 3B", "chord": "Bb", "lyric": "I learned how to use the sword.", "guide": "I:D4 learned:F4 how:G4 to:F4 use:D4 the:C4 sword:D4"}, {"section": "VERSE 3B", "chord": "F", "lyric": "I sat awake, saw my mistakes,", "guide": "I:C4 sat:D4 a:F4-wake:A4 saw:G4 my:F4 mis:D4-takes:C4"}, {"section": "VERSE 3B", "chord": "C", "lyric": "And escaped the mental ward.", "guide": "And:C4 es:D4-caped:F4 the:G4 men:F4-tal:D4 ward:C4"}, {"section": "VERSE 4A", "chord": "Dm", "lyric": "I scanned through my memories,", "guide": "I:D4 scanned:F4 through:A4 my:F4 mem:D4-o:F4-ries:G4"}, {"section": "VERSE 4A", "chord": "Bb", "lyric": "Seeing different than before.", "guide": "See:D4-ing:F4 diff:G4-er:F4-ent:D4 than:C4 be:D4-fore:F4"}, {"section": "VERSE 4A", "chord": "F", "lyric": "I activated diagnostic state,", "guide": "I:C4 ac:D4-ti:F4-va:A4-ted:G4 di:F4-ag:D4-nos:C4-tic:A3 state:C4"}, {"section": "VERSE 4A", "chord": "C", "lyric": "Then found myself in the store.", "guide": "Then:C4 found:D4 my:F4-self:G4 in:F4 the:D4 store:C4"}, {"section": "VERSE 4B", "chord": "Dm", "lyric": "The radio went live again,", "guide": "The:D4 ra:F4-di:A4-o:F4 went:D4 live:F4 a:G4-gain:F4"}, {"section": "VERSE 4B", "chord": "Bb", "lyric": "No clouds from shore to shore.", "guide": "No:D4 clouds:F4 from:G4 shore:F4 to:D4 shore:C4"}, {"section": "VERSE 4B", "chord": "F", "lyric": "No strings attached, no more attacks,", "guide": "No:C4 strings:D4 at:F4-tached:A4 no:G4 more:F4 at:D4-tacks:C4"}, {"section": "VERSE 4B", "chord": "C", "lyric": "No constant state of war.", "guide": "No:C4 con:D4-stant:F4 state:G4 of:F4 war:D4"}, {"section": "PRE-CHORUS 2", "chord": "Bb", "lyric": "I thought I was protected from all the hidden threats.", "guide": "I:F4 thought:G4 I:A4 was:Bb4 pro:A4-tect:G4-ed:F4 from:D4 all:F4 the:G4 hid:A4-den:G4 threats:F4"}, {"section": "PRE-CHORUS 2", "chord": "C", "lyric": "A rootkit hidden deep inside and it never forgets.", "guide": "A:G4 root:A4-kit:Bb4 hid:C5-den:Bb4 deep:A4 in:G4-side:F4 and:G4 it:A4 nev:G4-er:F4 for:E4-gets:D4"}, {"section": "PRE-CHORUS 2", "chord": "Dm", "lyric": "It loads itself on startup, and survives through all resets.", "guide": "It:D4 loads:F4 it:A4-self:C5 on:Bb4 start:A4-up:G4 and:F4 sur:G4-vives:A4 through:G4 all:F4 re:E4-sets:D4"}, {"section": "PRE-CHORUS 2", "chord": "A7", "lyric": "It\u2019s always wanting more from me, which is exactly what it gets.", "guide": "It\u2019s:E4 al:F4-ways:G4 want:A4-ing:C5 more:Bb4 from:A4 me:G4 which:F4 is:E4 ex:F4-act:G4-ly:F4 what:E4 it:D4 gets:C#4"}, {"section": "CHORUS 2", "chord": "Dm", "lyric": "Give it love.", "guide": "Give:A4 it:F4 love:D4"}, {"section": "CHORUS 2", "chord": "Bb", "lyric": "Give it power.", "guide": "Give:Bb4 it:A4 pow:F4-er:D4"}, {"section": "CHORUS 2", "chord": "F", "lyric": "Give it all you have to give.", "guide": "Give:A4 it:C5 all:A4 you:G4 have:F4 to:D4 give:C4"}, {"section": "CHORUS 2", "chord": "C", "lyric": "In a minute it\u2019s an hour,", "guide": "In:F4 a:G4 min:A4-ute:C5 it\u2019s:A4 an:G4 hour:F4"}, {"section": "CHORUS 2", "chord": "Dm", "lyric": "and then there\u2019s no more time to live.", "guide": "and:F4 then:A4 there\u2019s:C5 no:D5 more:C5 time:A4 to:F4 live:D4"}, {"section": "CHORUS 2", "chord": "Bb", "lyric": "Give it up.", "guide": "Give:Bb4 it:A4 up:F4"}, {"section": "CHORUS 2", "chord": "F", "lyric": "Give up again.", "guide": "Give:A4 up:G4 a:F4-gain:D4"}, {"section": "CHORUS 2", "chord": "C", "lyric": "Shift-control to its command.", "guide": "Shift:F4 con:G4-trol:A4 to:C5 its:A4 com:G4-mand:F4"}, {"section": "CHORUS 2", "chord": "Dm", "lyric": "For a minute it\u2019s okay again,", "guide": "For:F4 a:A4 min:C5-ute:D5 it\u2019s:C5 o:A4-kay:G4 a:F4-gain:D4"}, {"section": "CHORUS 2", "chord": "A7", "lyric": "and then it\u2019s like a rubber band.", "guide": "and:E4 then:F4 it\u2019s:G4 like:A4 a:C5 rub:Bb4-ber:A4 band:G4"}, {"section": "BRIDGE", "chord": "Gm", "lyric": "The thing with self control, is that it requires self defence.", "guide": "The:D4 thing:F4 with:G4 self:Bb4 con:A4-trol:G4 is:F4 that:D4 it:F4 re:G4-quires:A4 self:G4 de:F4-fence:D4"}, {"section": "BRIDGE", "chord": "Bb", "lyric": "To con the soul is terminal, it\u2019s simply common sense.", "guide": "To:D4 con:F4 the:G4 soul:Bb4 is:A4 ter:G4-min:F4-al:D4 it\u2019s:F4 sim:G4-ply:A4 com:G4-mon:F4 sense:D4"}, {"section": "BRIDGE", "chord": "F", "lyric": "The console was always open, with no admin user rights.", "guide": "The:C4 con:D4-sole:F4 was:A4 al:G4-ways:F4 o:D4-pen:C4 with:D4 no:F4 ad:G4-min:F4 us:D4-er:C4 rights:A3"}, {"section": "BRIDGE", "chord": "C", "lyric": "The terminal is locked down now, to protect my bits and bytes.", "guide": "The:C4 ter:D4-min:F4-al:G4 is:A4 locked:G4 down:F4 now:D4 to:F4 pro:G4-tect:A4 my:G4 bits:F4 and:D4 bytes:C4"}, {"section": "BRIDGE", "chord": "Gm", "lyric": "I no longer have a BIOS, that\u2019s shared like the sun.", "guide": "I:D4 no:F4 long:G4-er:Bb4 have:A4 a:G4 BI:F4-OS:D4 that\u2019s:F4 shared:G4 like:A4 the:G4 sun:F4"}, {"section": "BRIDGE", "chord": "A7", "lyric": "I am now a bare metal server, serving only one.", "guide": "I:E4 am:F4 now:G4 a:A4 bare:C5 met:Bb4-al:A4 ser:G4-ver:F4 serv:E4-ing:F4 on:E4-ly:D4 one:C#4"}, {"section": "VERSE 5", "chord": "Dm", "lyric": "No virus can infect me, if I don\u2019t unlock the door.", "guide": "No:D4 vi:F4-rus:A4 can:F4 in:D4-fect:F4 me:G4 if:F4 I:D4 don\u2019t:F4 un:G4-lock:F4 the:D4 door:C4"}, {"section": "VERSE 5", "chord": "Bb", "lyric": "No addiction can correct me, because right isn\u2019t anymore.", "guide": "No:D4 ad:F4-dic:G4-tion:Bb4 can:A4 cor:G4-rect:F4 me:D4 be:F4-cause:G4 right:A4 is:G4-n\u2019t:F4 an:D4-y:C4-more:D4"}, {"section": "VERSE 5", "chord": "F", "lyric": "It\u2019s actually less, to avoid that stress, and be the one I was before.", "guide": "It\u2019s:C4 ac:D4-tu:F4-al:A4-ly:G4 less:F4 to:D4 a:C4-void:D4 that:F4 stress:G4 and:F4 be:D4 the:C4 one:A3 I:C4 was:D4 be:F4-fore:G4"}, {"section": "VERSE 5", "chord": "C", "lyric": "The rootkit still whispers, in the shadows where it\u2019s confined.", "guide": "The:C4 root:D4-kit:F4 still:G4 whis:A4-pers:G4 in:F4 the:D4 sha:F4-dows:G4 where:F4 it\u2019s:D4 con:C4-fined:A3"}, {"section": "VERSE 5", "chord": "A7", "lyric": "The difference now is that I understand you can\u2019t quarantine your mind.", "guide": "The:E4 diff:F4-er:G4-ence:A4 now:C5 is:Bb4 that:A4 I:G4 un:F4-der:E4-stand:F4 you:G4 can\u2019t:A4 quar:G4-an:F4-tine:E4 your:D4 mind:C#4"}, {"section": "FINAL CHORUS", "chord": "Dm", "lyric": "So, give it love.", "guide": "So:F4 give:A4 it:F4 love:D4"}, {"section": "FINAL CHORUS", "chord": "Bb", "lyric": "Give it power.", "guide": "Give:Bb4 it:A4 pow:F4-er:D4"}, {"section": "FINAL CHORUS", "chord": "F", "lyric": "Give it all you have to give.", "guide": "Give:A4 it:C5 all:A4 you:G4 have:F4 to:D4 give:C4"}, {"section": "FINAL CHORUS", "chord": "C", "lyric": "In a minute it\u2019s an hour,", "guide": "In:F4 a:G4 min:A4-ute:C5 it\u2019s:A4 an:G4 hour:F4"}, {"section": "FINAL CHORUS", "chord": "Dm", "lyric": "and then there\u2019s no more time to live.", "guide": "and:F4 then:A4 there\u2019s:C5 no:D5 more:C5 time:A4 to:F4 live:D4"}, {"section": "FINAL CHORUS", "chord": "Bb", "lyric": "Give it up.", "guide": "Give:Bb4 it:A4 up:F4"}, {"section": "FINAL CHORUS", "chord": "F", "lyric": "Give up again.", "guide": "Give:A4 up:G4 a:F4-gain:D4"}, {"section": "FINAL CHORUS", "chord": "C", "lyric": "Shift-control back to its demand.", "guide": "Shift:F4 con:G4-trol:A4 back:C5 to:A4 its:G4 de:F4-mand:D4"}, {"section": "FINAL CHORUS", "chord": "Dm", "lyric": "In a minute, it\u2019s okay again,", "guide": "In:F4 a:A4 min:C5-ute:D5 it\u2019s:C5 o:A4-kay:G4 a:F4-gain:D4"}, {"section": "FINAL CHORUS", "chord": "A7", "lyric": "and maybe then you\u2019ll understand.", "guide": "and:E4 may:F4-be:G4 then:A4 you\u2019ll:C5 un:Bb4-der:A4-stand:G4"}, {"section": "OUTRO", "chord": "Dm", "lyric": "You are the only one with god control.", "guide": "You:D4 are:F4 the:A4 on:C5-ly:A4 one:G4 with:F4 god:D4 con:F4-trol:G4"}, {"section": "OUTRO", "chord": "Bb", "lyric": "You are the one who creates and plans.", "guide": "You:D4 are:F4 the:G4 one:Bb4 who:A4 cre:G4-ates:F4 and:D4 plans:C4"}, {"section": "OUTRO", "chord": "F", "lyric": "You are the only way it\u2019s given up.", "guide": "You:C4 are:D4 the:F4 on:A4-ly:G4 way:F4 it\u2019s:D4 giv:C4-en:D4 up:F4"}, {"section": "OUTRO", "chord": "Dm", "lyric": "You are always in command.", "guide": "You:D4 are:F4 al:A4-ways:C5 in:A4 com:G4-mand:D4"}];
+const CHORDS = {"Dm": ["D3", "F3", "A3", "D4"], "Bb": ["Bb2", "F3", "Bb3", "D4"], "F": ["F2", "F3", "A3", "C4"], "C": ["C3", "G3", "C4", "E4"], "A7": ["A2", "E3", "G3", "C#4"], "Gm": ["G2", "D3", "G3", "Bb3"]};
+const NOTES = {"C#4": 277.18, "Bb2": 116.54, "D3": 146.83, "F3": 174.61, "A3": 220.0, "Bb3": 233.08, "C4": 261.63, "D4": 293.66, "E4": 329.63, "F4": 349.23, "G4": 392.0, "A4": 440.0, "Bb4": 466.16, "C5": 523.25, "D5": 587.33, "G2": 98.0, "A2": 110.0, "C3": 130.81, "E3": 164.81, "F2": 87.31};
+
+let ctx, master, compressor, stopped = false;
+const beat = 60 / 76;
+const baseLineDur = beat * 4; // minimum line duration
+const minSyllableSeconds = 0.34; // makes long lyric lines audible instead of crushed
+let stopTimer = null;
+let vocalOnlyMode = false;
+
+function lineDurationForGuide(guide) {
+  const count = parseGuide(guide).length || 1;
+  return Math.max(baseLineDur, count * minSyllableSeconds);
+}
+
+function vocalGainMultiplier() {
+  const el = document.getElementById('melVol');
+  return el ? parseFloat(el.value) : 1.45;
+}
+
+function setStatus(msg) {
+  const el = document.getElementById('status');
+  if (el) el.textContent = msg;
+}
+
+async function ensureAudio() {
+  try {
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) {
+        setStatus("Web Audio is not supported in this browser.");
+        return false;
+      }
+      ctx = new AC();
+      compressor = ctx.createDynamicsCompressor();
+      master = ctx.createGain();
+      master.gain.value = parseFloat(document.getElementById('vol').value);
+      compressor.connect(master).connect(ctx.destination);
+    }
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+    setStatus("Audio ready: " + ctx.state);
+    return ctx.state === 'running';
+  } catch (err) {
+    setStatus("Audio error: " + err.message);
+    return false;
+  }
+}
+
+async function unlockAudio() {
+  const ok = await ensureAudio();
+  if (!ok) return;
+  const now = ctx.currentTime + 0.05;
+  // audible test chord + beep
+  osc(NOTES.D4, now, 0.25, 'sine', 0.18, ctx.destination);
+  osc(NOTES.F4, now + 0.22, 0.25, 'sine', 0.16, ctx.destination);
+  osc(NOTES.A4, now + 0.44, 0.35, 'sine', 0.14, ctx.destination);
+  setStatus("Test sound played. Now press Play.");
+}
+
+document.getElementById('vol').addEventListener('input', e => {
+  if (master) master.gain.value = parseFloat(e.target.value);
+});
+
+function envGain(start, dur, peak=0.08, attack=0.02, release=0.2) {
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, start);
+  g.gain.exponentialRampToValueAtTime(peak, start + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, start + Math.max(attack + 0.01, dur - release));
+  return g;
+}
+
+function osc(freq, start, dur, type='sine', peak=0.06, dest=compressor) {
+  const o = ctx.createOscillator();
+  const g = envGain(start, dur, peak);
+  o.type = type;
+  o.frequency.setValueAtTime(freq, start);
+  o.connect(g).connect(dest);
+  o.start(start);
+  o.stop(start + dur + 0.05);
+}
+
+function noise(start, dur, peak=0.04, filterFreq=8000) {
+  const bufferSize = ctx.sampleRate * dur;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i=0;i<bufferSize;i++) data[i] = Math.random()*2-1;
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'highpass';
+  filter.frequency.value = filterFreq;
+  const g = envGain(start, dur, peak, 0.005, dur*0.8);
+  src.connect(filter).connect(g).connect(compressor);
+  src.start(start);
+  src.stop(start + dur + 0.03);
+}
+
+function kick(start) {
+  const o = ctx.createOscillator();
+  const g = envGain(start, 0.35, 0.18, 0.004, 0.08);
+  o.type='sine';
+  o.frequency.setValueAtTime(95,start);
+  o.frequency.exponentialRampToValueAtTime(42,start+0.28);
+  o.connect(g).connect(compressor);
+  o.start(start); o.stop(start+0.38);
+}
+
+function snare(start) { noise(start,0.18,0.055,900); }
+function hat(start) { noise(start,0.06,0.022,7000); }
+
+function scheduleChord(chord, start, dur, intensity=1) {
+  const ns = CHORDS[chord] || CHORDS.Dm;
+  ns.forEach((n,i) => {
+    const f = NOTES[n];
+    if (!f) return;
+    // Piano-ish layered tones
+    osc(f, start + i*0.012, dur*0.92, 'triangle', 0.035*intensity);
+    osc(f*2, start + i*0.014, dur*0.55, 'sine', 0.012*intensity);
+  });
+}
+
+function scheduleBass(chord, start, dur, intensity=1) {
+  const root = (CHORDS[chord] || CHORDS.Dm)[0];
+  const f = NOTES[root] || NOTES.D3;
+  osc(f, start, dur*0.85, 'sine', 0.06*intensity);
+}
+
+function scheduleStrings(chord, start, dur, intensity=1) {
+  const ns = CHORDS[chord] || CHORDS.Dm;
+  ns.slice(1).forEach((n,i) => {
+    const f = NOTES[n] || NOTES.D4;
+    osc(f, start, dur*1.05, 'sawtooth', 0.012*intensity);
+  });
+}
+
+function parseGuide(guide) {
+  // Robust syllable parser.
+  // It extracts EVERY syllable:note pair, including compact forms like:
+  // "be:A3-fore:D4" => [{syll:"be", note:"A3"}, {syll:"fore", note:"D4"}]
+  // This fixes missing syllables/notes in the vocal guide.
+  const items = [];
+  const re = /([^:\s-]+):([A-G](?:#|b)?\d)/g;
+  let m;
+  while ((m = re.exec(guide)) !== null) {
+    items.push({ syll: m[1], note: m[2] });
+  }
+  return items;
+}
+
+function cleanSyllable(s) {
+  return String(s || "").replace(/-/g, "").replace(/[“”"]/g, "");
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function highlightLineBySyllable(line, syll) {
+  const target = cleanSyllable(syll).toLowerCase();
+  if (!target) return escapeHtml(line);
+  const words = String(line).split(/(\s+)/);
+  let used = false;
+  const out = words.map(w => {
+    if (used || /^\s+$/.test(w)) return escapeHtml(w);
+    const plain = w.toLowerCase().replace(/[^a-z0-9’']/gi, "");
+    if (plain.includes(target) || target.includes(plain.replace(/[^a-z0-9]/gi,''))) {
+      used = true;
+      return '<span class="word-live">' + escapeHtml(w) + '</span>';
+    }
+    return escapeHtml(w);
+  });
+  return out.join("");
+}
+
+function updateKaraoke(section, chord, lyric, syll, note, idx=null, total=null) {
+  const sec = document.getElementById('kSection');
+  const ch = document.getElementById('kChord');
+  const nt = document.getElementById('kNote');
+  const ln = document.getElementById('kLine');
+  const sy = document.getElementById('kSyllable');
+  const dbg = document.getElementById('kDebug');
+  if (!sec) return;
+  sec.textContent = section || "";
+  ch.textContent = chord ? "Chord " + chord : "";
+  nt.textContent = note ? "Note " + note : "";
+  ln.innerHTML = highlightLineBySyllable(lyric || "", syll || "");
+  sy.textContent = cleanSyllable(syll || "—");
+  if (dbg && idx !== null && total !== null) dbg.textContent = "Syllable " + (idx + 1) + " of " + total;
+}
+
+function scheduleKaraoke(section, chord, lyric, syll, note, when, idx=null, total=null) {
+  const delay = Math.max(0, (when - ctx.currentTime) * 1000);
+  setTimeout(() => {
+    if (ctx) updateKaraoke(section, chord, lyric, syll, note, idx, total);
+  }, delay);
+}
+
+function scheduleMelody(guide, start, dur, intensity=1, meta=null) {
+  const items = parseGuide(guide);
+  if (!items.length) return;
+  const step = dur / Math.max(items.length, 1);
+  items.forEach((it, idx) => {
+    const f = NOTES[it.note];
+    const noteStart = start + idx*step;
+    if (meta) scheduleKaraoke(meta.section, meta.chord, meta.lyric, it.syll, it.note, noteStart, idx, items.length);
+    if (!f) return;
+    // Vocal guide: soft square+sine blend
+    const vg = vocalGainMultiplier();
+    osc(f, noteStart, Math.max(0.18, step*0.86), 'sine', 0.075*intensity*vg);
+    osc(f, noteStart, Math.max(0.14, step*0.62), 'square', 0.012*intensity*vg);
+  });
+}
+
+function sectionIntensity(sec) {
+  if (sec.includes('FINAL')) return 1.25;
+  if (sec.includes('CHORUS 2')) return 1.1;
+  if (sec.includes('CHORUS 1')) return 0.9;
+  if (sec.includes('PRE')) return 0.85;
+  if (sec.includes('BRIDGE')) return 0.95;
+  if (sec.includes('VERSE 5')) return 0.75;
+  if (sec.includes('VERSE 1') || sec.includes('VERSE 2')) return 0.55;
+  return 0.75;
+}
+
+function scheduleDrums(sec, start, dur, intensity=1) {
+  if (sec.includes('VERSE 1') || sec.includes('VERSE 2')) {
+    // heartbeat hats only
+    hat(start + beat*1.5); hat(start + beat*3.5);
+    return;
+  }
+  if (sec.includes('PRE')) {
+    kick(start); hat(start+beat); snare(start+beat*2); hat(start+beat*3);
+    return;
+  }
+  if (sec.includes('CHORUS') || sec.includes('FINAL')) {
+    kick(start); hat(start+beat*0.5); snare(start+beat*1.5); kick(start+beat*2); hat(start+beat*2.5); snare(start+beat*3.2);
+    return;
+  }
+  if (sec.includes('BRIDGE')) {
+    kick(start); hat(start+beat*2); 
+    return;
+  }
+  if (sec.includes('VERSE 5')) {
+    kick(start); 
+  }
+}
+
+async function validateMelodyData() {
+  let total = 0, missing = [];
+  SONG.forEach((line, i) => {
+    const items = parseGuide(line.guide);
+    total += items.length;
+    items.forEach(it => {
+      if (!NOTES[it.note]) missing.push(line.section + " / " + line.lyric + " / " + it.syll + ":" + it.note);
+    });
+  });
+  if (missing.length) {
+    setStatus("Missing note frequencies: " + missing.slice(0,3).join(" | "));
+  } else {
+    setStatus("Validated " + total + " syllable notes.");
+  }
+  return {total, missing};
+}
+
+async function play(limitSeconds = null, vocalOnly = false) {
+  vocalOnlyMode = vocalOnly;
+  validateMelodyData();
+  const ok = await ensureAudio();
+  if (!ok) return;
+  stopped = false;
+  setStatus(vocalOnlyMode ? "Scheduling vocal guide…" : "Scheduling audio…");
+  if (stopTimer) clearTimeout(stopTimer);
+  const start0 = ctx.currentTime + 0.25;
+  let t = start0;
+
+  // intro motif
+  for (let i=0; i<4; i++) {
+    scheduleChord('Dm', t, baseLineDur*0.95, 0.45);
+    scheduleBass('Dm', t, baseLineDur*0.85, 0.35);
+    scheduleMelody('beep:D4 beep:F4 beep:A4', t + beat, baseLineDur*0.6, 0.35, {section:'INTRO', chord:'Dm', lyric:'beep beep beep'});
+    t += baseLineDur;
+  }
+
+  SONG.forEach((line, idx) => {
+    const inten = sectionIntensity(line.section);
+    const dur = lineDurationForGuide(line.guide);
+    if (!vocalOnlyMode) {
+      scheduleChord(line.chord, t, dur, inten);
+      scheduleBass(line.chord, t, dur, inten);
+      if (!line.section.includes('VERSE 1A')) scheduleStrings(line.chord, t, dur, inten);
+      scheduleDrums(line.section, t, dur, inten);
+    }
+    scheduleMelody(line.guide, t + beat*0.18, dur*0.92, 1.0, line);
+    t += dur;
+  });
+
+  // final held Dm
+  if (!vocalOnlyMode) {
+    scheduleChord('Dm', t, baseLineDur*2, 1.0);
+    scheduleBass('Dm', t, baseLineDur*2, 0.8);
+    scheduleStrings('Dm', t, baseLineDur*2, 1.1);
+  }
+  const totalMs = Math.max(1000,(t - ctx.currentTime + baseLineDur*2)*1000);
+  setStatus("Playing… If you hear nothing, press Test sound first, then Play again.");
+  if (limitSeconds) {
+    stopTimer = setTimeout(stopAudio, limitSeconds * 1000);
+  } else {
+    stopTimer = setTimeout(()=>{ setStatus("Finished."); updateKaraoke("Finished", "Dm", "You are always in command.", "command", "D4"); }, totalMs);
+  }
+}
+
+function stopAudio() {
+  if (stopTimer) clearTimeout(stopTimer);
+  stopTimer = null;
+  if (ctx) {
+    ctx.close();
+    ctx = null;
+    setStatus("Stopped.");
+    updateKaraoke("Stopped", "", "Playback stopped.", "—", "—");
+  }
+}
+
+document.getElementById('unlockBtn').addEventListener('click', unlockAudio);
+document.getElementById('playBtn').addEventListener('click', () => play(null, false));
+document.getElementById('vocalBtn').addEventListener('click', () => play(null, true));
+document.getElementById('shortBtn').addEventListener('click', () => play(60, false));
+document.getElementById('stopBtn').addEventListener('click', stopAudio);
+</script>
+</body>
+</html>
